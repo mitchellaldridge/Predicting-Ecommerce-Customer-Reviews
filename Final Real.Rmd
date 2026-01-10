@@ -1,0 +1,344 @@
+---
+title: "Airline Final"
+output: html_document
+date: "2025-11-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(randomForest)
+library(caret)
+```
+
+```{r}
+df <- read_csv("ecommerce_customer_behavior_dataset.csv")
+```
+
+# Link to data: https://www.kaggle.com/datasets/umuttuygurr/e-commerce-customer-behavior-and-sales-analysis-tr?select=ecommerce_customer_behavior_dataset.csv 
+
+```{r}
+colSums(is.na(df))
+```
+
+```{r}
+ggplot(df, aes(Customer_Rating)) +
+  geom_histogram()
+```
+# Remove ID columns
+
+```{r}
+df <- df %>%
+  select(-Order_ID, -Customer_ID)
+```
+
+
+# Just grab the months from the date column and then turn that into seasons. 
+
+```{r}
+library(lubridate)
+df$Season <- case_when(
+  month(df$Date) %in% c(12, 1, 2) ~ "Winter",
+  month(df$Date) %in% c(3, 4, 5) ~ "Spring",
+  month(df$Date) %in% c(6, 7, 8) ~ "Summer",
+  month(df$Date) %in% c(9, 10, 11) ~ "Fall",
+)
+```
+
+# Remove date column
+
+```{r}
+df <- df %>%
+  select(-Date)
+```
+
+```{r}
+summary(df)
+```
+```{r}
+ggplot(df, aes(Age)) +
+  geom_histogram()
+```
+
+# Check and make sure the category columns have a reasonable amount of choices, if not then create subsections
+
+```{r}
+n_distinct(df$Gender)
+```
+```{r}
+unique(df$Gender)
+```
+```{r}
+n_distinct(df$City)
+```
+```{r}
+n_distinct(df$Product_Category)
+```
+```{r}
+n_distinct(df$Payment_Method)
+```
+```{r}
+n_distinct(df$Device_Type)
+```
+```{r}
+ggplot(df, aes(Unit_Price)) +
+  geom_histogram()
+```
+
+# Since Unit Price, and Total Price are very similar and in some cases the same I will drop unit price. I will also convert discount amount into a more simple yes or no discount column. 
+
+```{r}
+df <- df %>%
+  mutate(Discount = ifelse(Discount_Amount > 0, "Yes", "No")) %>%
+  select(-Unit_Price, -Discount_Amount) 
+```
+
+
+```{r}
+df %>%
+  count(Discount)
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+df <- df %>%
+  mutate(across(where(is.character), as.factor))
+```
+
+```{r}
+str(df)
+```
+```{r}
+df <- df %>%
+  mutate(Is_Returning_Customer = as.factor(Is_Returning_Customer))
+```
+
+```{r}
+summary(df)
+```
+```{r}
+ggplot(df, aes(Total_Amount)) + 
+  geom_histogram()
+```
+
+# Doing a log transformation of Total_Amount as it has a large right skew as some purchases were very large compared to others. 
+
+```{r}
+df$Log_Total_Amount <- log(df$Total_Amount)
+```
+
+```{r}
+ggplot(df, aes(Log_Total_Amount)) + 
+  geom_histogram()
+```
+
+# Did a log transformation on total amount since it has a very severe right skew from some much more expensive items. Going to use the logged version in the modeling upcoming. 
+
+```{r}
+df <- df %>%
+  select(-Total_Amount)
+```
+
+
+```{r}
+library(caret)
+library(randomForest)
+
+set.seed(8)
+train_method_used = trainControl(method="cv", number = 5)
+
+fit_caret_lm <- train(Customer_Rating ~ .,
+                      data = df,
+                      method = "lm",
+                      trControl = train_method_used,
+                      metric = "MAE")
+
+fit_caret_rf = train(Customer_Rating ~ ., 
+             data = df,
+             method = "rf",
+             trControl = train_method_used,
+             tuneGrid = expand.grid(mtry = c(2,4,6)),
+             ntree = 200,
+             metric = "MAE")
+
+all_MAE_CV <- c(min(fit_caret_lm$results$MAE),
+                min(fit_caret_rf$results$MAE))
+
+all_train_output <- list(fit_caret_lm,fit_caret_rf)
+
+bestmodel_train_output <- all_train_output[[which.min(all_MAE_CV)]]
+
+bestmodel_train_output
+```
+```{r}
+fit_caret_lm
+```
+
+```{r}
+fit_caret_rf$finalModel
+```
+
+# Random forest proved to be the best, with 2 variables tried at each split. The models are still not very good at predicting though, it has a negative percent Var explained, showing that it may be preforming worse than a simple model. We also see that the R squared is almost at 0, which shows that there is not much of the variation of customer reviews explained by this model, and that there is not a strong relationship between the response and predictor variables. 
+
+
+```{r}
+n = nrow(df)  
+nfolds_outer = 5  
+groups = rep(1:nfolds_outer,length=n)  
+set.seed(8)
+cvgroups = sample(groups,n)  
+
+# set up storage for outer 5-fold cross-validation for model ASSESSMENT
+allbesttrain = list(rep(NA,nfolds_outer))  
+allpredicted_outer = rep(NA,n)  
+
+train_method_used = trainControl(method="cv", number = 5)
+
+for (jj in 1: nfolds_outer) {    
+  in_train_outer = (cvgroups != jj)   
+  in_test_outer = (cvgroups == jj)     
+
+  train_set_outer = df[in_train_outer, ] 
+  test_set_outer = df[in_test_outer, ]   
+  
+  dataused=train_set_outer
+  
+  
+  fit_caret_lm_2 <- train(Customer_Rating ~ .,
+                      data = dataused,
+                      method = "lm",
+                      trControl = train_method_used,
+                      metric = "MAE")
+
+  fit_caret_rf_2 = train(Customer_Rating ~ ., 
+                     data = dataused,
+                     method = "rf",
+                     trControl = train_method_used,
+                     tuneGrid = expand.grid(mtry = c(2,4,6)),
+                     ntree = 200,
+                     metric = "MAE")
+        
+  all_MAE_CV <- c(min(fit_caret_lm_2$results$MAE),
+                  min(fit_caret_rf_2$results$MAE))
+  
+  all_train_output <- list(fit_caret_lm_2, fit_caret_rf_2)
+
+  bestmodel_train_output <- all_train_output[[which.min(all_MAE_CV)]]
+
+
+
+
+  allbesttrain[[jj]] = bestmodel_train_output
+
+  allpredicted_outer[in_test_outer]  = bestmodel_train_output |> predict(test_set_outer)
+}
+
+# assessment
+y = df$Customer_Rating
+gf_point(y ~ allpredicted_outer)
+```
+
+```{r}
+# This line will compute the models best estimate for future performance
+MAE_outer = mean(abs(y - allpredicted_outer)); MAE_outer
+```
+
+# We see that we will likely be .882 rating off of future customer reviews. It is not terrible, but it is also not great. 
+
+```{r}
+min(fit_caret_lm_2$results$MAE)
+min(fit_caret_rf_2$results$MAE)
+```
+# Random Forest has the lower MAE value
+
+```{r}
+final_model <- fit_caret_rf$finalModel
+final_model
+```
+```{r, fig.height=6.5}
+varImpPlot(final_model)
+```
+```{r}
+varImp(final_model) %>%
+  arrange(desc(Overall))
+```
+
+# We can see here which variables the model found most important. 
+
+
+```{r}
+cor(df$Customer_Rating, df$Log_Total_Amount)
+cor(df$Customer_Rating, df$Session_Duration_Minutes)
+cor(df$Customer_Rating, df$Age)
+```
+# As expected from the model results, the correlation of the response to even the 3 most important predictors is very small. 
+
+
+```{r}
+source("gf_partialPlot.R")
+gf_partialPlot(
+  model = fit_caret_rf,
+  df = df,
+  x.var = "Log_Total_Amount"
+)
+```
+
+```{r}
+source("gf_partialPlot.R")
+gf_partialPlot(
+  model = fit_caret_rf,
+  df = df,
+  x.var = "Session_Duration_Minutes"
+)
+```
+
+```{r}
+source("gf_partialPlot.R")
+gf_partialPlot(
+  model = fit_caret_rf,
+  df = df,
+  x.var = "Age"
+)
+```
+
+```{r}
+df$predict_review <- predict(fit_caret_rf, newdata = df)
+
+
+```
+
+```{r}
+
+
+ggplot(df, aes(x = Session_Duration_Minutes,  y = predict_review)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+```{r}
+ggplot(df, aes(x = Age,  y = predict_review)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+```{r}
+ggplot(df, aes(x = Log_Total_Amount,  y = predict_review)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Predicted Review vs. Log Total Amount",
+       y = "Predicted Review",
+       x = "Log Total Amount")
+```
+
+
+
+
+
+
+
+
+
