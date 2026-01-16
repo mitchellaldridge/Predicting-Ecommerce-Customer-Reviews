@@ -21,3 +21,4 @@ The data comes from a kaggle data set on e-commerce customer behavior and sales 
 ## Results
 - The results showed that tree-based models outperformed linear models for predicting customer reviews.
 - A final double cross validation MAE of .882 was found for the best random forest model.
+- Final Report: https://github.com/mitchellaldridge/Predicting-Ecommerce-Customer-Reviews/blob/main/Final%20Summary.pdf
