@@ -4,7 +4,7 @@
 This project’s goal is to predict a customers review rating based on other factors of their internet purchasing history.
 
 ## Data
-The data can be found at https://www.kaggle.com/datasets/umuttuygurr/e-commerce-customer-behavior-and-sales-analysis-tr?select=ecommerce_customer_behavior_dataset.csv
+The data comes from a kaggle data set on e-commerce customer behavior and sales analysis.
 
 ## Methodology
 ### Step 1: Exploratory Data Analysis
